@@ -1,0 +1,12 @@
+pyTelegramBotAPI
+requests
+aiohttp
+pillow
+pydub
+gTTS
+python-dotenv
+cryptography
+pytz
+pyyaml
+validators
+asyncio
