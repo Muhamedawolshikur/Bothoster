@@ -5,19 +5,16 @@ import signal
 import time
 import shutil
 import threading
+import sys
 from telebot import types
 from flask import Flask
 
-# =========================================================
-# 亗 𝐊𝐢𝐧𝐠 𝐇𝐎𝐒𝐓 - ELITE DEPLOYMENT SYSTEM (PRO VERSION)
-# =========================================================
-
-# --- [ KEEP-ALIVE SERVER FOR RENDER ] ---
+# --- [ 1. RENDER KEEP-ALIVE & PORT ] ---
 app = Flask('')
 
 @app.route('/')
 def home():
-    return "King Host is Live!"
+    return "King Host Pro Max is Running!"
 
 def run_flask():
     port = int(os.environ.get('PORT', 8080))
@@ -28,12 +25,123 @@ def keep_alive():
     t.daemon = True
     t.start()
 
-# --- [ CONFIGURATION ] ---
+# --- [ 2. CONFIGURATION ] ---
 API_TOKEN = "8724286862:AAErsbHV0mbQdpSnNeDrxiDs7GGKvVTZpq4"
 ADMIN_ID = 8700421304
 
 bot = telebot.TeleBot(API_TOKEN, parse_mode="HTML")
+BASE_DIR = "king_hosted_files"
+os.makedirs(BASE_DIR, exist_ok=True)
 
+running_processes = {}   
+user_bot_map = {}        
+all_users = set()
+LINE = "━━━━━━━━━━━━━━━━━━"
+
+# --- [ 3. AUTO-INSTALLER ENGINE ] ---
+def install_requirements(file_path):
+    """ፋይሉ ውስጥ ያሉትን 'import' ተከትሎ ላይብረሪዎችን በራሱ ይጭናል"""
+    try:
+        with open(file_path, 'r') as f:
+            content = f.read()
+        
+        # የተለመዱ ላይብረሪዎችን ፈልጎ መጫን
+        libs = ["telebot", "requests", "aiohttp", "flask", "pillow", "pymongo", "beautifulsoup4"]
+        for lib in libs:
+            if f"import {lib}" in content or f"from {lib}" in content:
+                # telebot ከሆነ pyTelegramBotAPI መጫን አለበት
+                package = "pyTelegramBotAPI" if lib == "telebot" else lib
+                subprocess.check_call([sys.executable, "-m", "pip", "install", package])
+    except Exception as e:
+        print(f"Install Error: {e}")
+
+# --- [ 4. MONITORING & CLEANUP ] ---
+def monitor_process(path, filename):
+    time.sleep(180) # 3 ደቂቃ
+    if os.path.exists(path):
+        size = os.path.getsize(path) / (1024 * 1024)
+        if size > 2: # 2MB በላይ ከሆነ
+            stop_bot(filename)
+            try: os.remove(path)
+            except: pass
+
+def stop_bot(filename):
+    if filename in running_processes:
+        try:
+            os.kill(running_processes[filename], signal.SIGKILL)
+            del running_processes[filename]
+        except: pass
+
+# --- [ 5. BOT HANDLERS ] ---
+
+@bot.message_handler(commands=["start"])
+def start(message):
+    all_users.add(message.from_user.id)
+    bot.send_message(message.chat.id, f"<b>亗 𝐊𝐢𝐧𝐠 𝐇𝐎𝐒𝐓 PRO MAX 亗</b>\n{LINE}\nReady to deploy with Auto-Installer!", reply_markup=main_menu(message.from_user.id))
+
+def main_menu(user_id):
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+    markup.add(types.KeyboardButton("🚀 Host New Bot"), types.KeyboardButton("🛑 My Running Bots"))
+    markup.add(types.KeyboardButton("📊 Server Status"))
+    if user_id == ADMIN_ID: markup.add(types.KeyboardButton("👑 Admin Panel"))
+    return markup
+
+@bot.message_handler(func=lambda m: m.text == "🚀 Host New Bot")
+def ask_name(message):
+    msg = bot.send_message(message.chat.id, "✨ <b>Enter Project Name:</b>")
+    bot.register_next_step_handler(msg, get_file)
+
+def get_file(message):
+    if not message.text: return
+    p_name = "".join(x for x in message.text if x.isalnum())
+    msg = bot.send_message(message.chat.id, f"📤 <b>Upload .py file for '{p_name}':</b>")
+    bot.register_next_step_handler(msg, deploy_engine, p_name)
+
+def deploy_engine(message, p_name):
+    if not message.document or not message.document.file_name.endswith(".py"):
+        bot.send_message(message.chat.id, "❌ Error: Upload .py file.")
+        return
+
+    status = bot.send_message(message.chat.id, "⚙️ <b>Preparing Environment...</b>")
+    
+    try:
+        file_info = bot.get_file(message.document.file_id)
+        downloaded = bot.download_file(file_info.file_path)
+        filename = f"{message.from_user.id}_{p_name}_{int(time.time())}.py"
+        path = os.path.join(BASE_DIR, filename)
+
+        with open(path, "wb") as f: f.write(downloaded)
+
+        # --- AUTO INSTALL START ---
+        bot.edit_message_text("📥 <b>Installing Requirements...</b>", message.chat.id, status.message_id)
+        install_requirements(path)
+        # --- AUTO INSTALL END ---
+
+        bot.edit_message_text("🚀 <b>Launching Bot...</b>", message.chat.id, status.message_id)
+        process = subprocess.Popen([sys.executable, path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        running_processes[filename] = process.pid
+        
+        u_id = message.from_user.id
+        if u_id not in user_bot_map: user_bot_map[u_id] = []
+        user_bot_map[u_id].append(filename)
+
+        bot.send_message(message.chat.id, f"✅ <b>Successfully Hosted!</b>\n{LINE}\nPID: <code>{process.pid}</code>")
+        threading.Thread(target=monitor_process, args=(path, filename), daemon=True).start()
+
+    except Exception as e:
+        bot.send_message(message.chat.id, f"❌ <b>Critical Error:</b> {e}")
+
+# ... (እዚህ ጋር የድሮው My Running Bots እና Admin Panel ኮዶች ይገባሉ - አልተቀየሩም) ...
+
+@bot.message_handler(func=lambda m: m.text == "📊 Server Status")
+def stats(message):
+    total, used, _ = shutil.disk_usage("/")
+    bot.send_message(message.chat.id, f"📊 <b>KING SERVER</b>\n{LINE}\nBots: {len(running_processes)}\nDisk: {used // (2**30)}GB Used")
+
+if __name__ == "__main__":
+    keep_alive()
+    print("🚀 KING HOST PRO MAX ONLINE!")
+    bot.infinity_polling(skip_pending=True)
 # 📂 Storage Setup
 BASE_DIR = "king_hosted_files"
 if not os.path.exists(BASE_DIR):
